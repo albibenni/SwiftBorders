@@ -1,0 +1,46 @@
+# Bumps the Homebrew formula in albibenni/homebrew-swiftborders whenever a
+# GitHub release is published here (or manually via workflow_dispatch).
+#
+# Requires a repository secret TAP_GITHUB_TOKEN: a fine-grained personal
+# access token with read/write "Contents" permission on the
+# homebrew-swiftborders repository.
+name: Update Homebrew tap
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0)"
+        required: true
+
+jobs:
+  update-formula:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine tag
+        id: tag
+        run: echo "tag=${{ github.event.inputs.tag || github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Compute source tarball sha256
+        id: sha
+        run: |
+          curl -fsSL "https://github.com/albibenni/SwiftBorders/archive/refs/tags/${{ steps.tag.outputs.tag }}.tar.gz" -o src.tar.gz
+          echo "sha=$(sha256sum src.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout tap
+        uses: actions/checkout@v4
+        with:
+          repository: albibenni/homebrew-swiftborders
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+
+      - name: Update formula and push
+        run: |
+          sed -i -E 's|url ".*"|url "https://github.com/albibenni/SwiftBorders/archive/refs/tags/${{ steps.tag.outputs.tag }}.tar.gz"|' Formula/swiftborders.rb
+          sed -i -E 's|sha256 ".*"|sha256 "${{ steps.sha.outputs.sha }}"|' Formula/swiftborders.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git diff --quiet && { echo "formula already up to date"; exit 0; }
+          git commit -am "swiftborders ${{ steps.tag.outputs.tag }}"
+          git push

@@ -20,25 +20,36 @@ The one non-public symbol used is `_AXUIElementGetWindow` (AX element → window
 ID), which has been stable for a decade and is what Rectangle, AltTab, Loop,
 etc. use. Everything else is public API.
 
-## Build & run
+## Install
 
 ```sh
-swift build -c release
-.build/release/swiftborders active_color=0xffe1e3e4 inactive_color=0xff494d64 width=5.0
+brew tap albibenni/swiftborders
+brew install swiftborders
 ```
 
 On first launch macOS asks for the **Accessibility** permission
-(System Settings → Privacy & Security → Accessibility); the process waits and
-starts automatically once granted. Note: rebuilding the binary changes its
-ad-hoc code signature, so after a rebuild you may need to remove and re-add it
-in the Accessibility list.
+(System Settings → Privacy & Security → Accessibility). The process waits and
+starts automatically once you grant it. The permission persists across
+updates.
+
+## Usage
+
+```sh
+swiftborders active_color=0xffe1e3e4 inactive_color=0xff494d64 width=5.0
+```
+
+To start it at login and keep it running:
+
+```sh
+brew services start swiftborders
+```
 
 ## Configuration
 
 Options are `key=value` pairs, given as CLI arguments or in
 `~/.config/swiftborders/swiftbordersrc` (one per line, `#` comments). The file
-is watched and live-reloaded — no restart or IPC needed. CLI arguments override
-the file.
+is watched and live-reloaded — edit it and running borders update instantly,
+no restart needed. CLI arguments override the file.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -54,25 +65,39 @@ the file.
 `hidpi`, `background_color`, `ax_focus` and `blur_radius` are accepted (and
 ignored) for drop-in compatibility with a JankyBorders `bordersrc`.
 
-### Start at login
+## AeroSpace integration
 
-```sh
-cp .build/release/swiftborders /usr/local/bin/
-cat > ~/Library/LaunchAgents/com.swiftborders.plist <<'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>com.swiftborders</string>
-  <key>ProgramArguments</key><array><string>/usr/local/bin/swiftborders</string></array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-</dict></plist>
-EOF
-launchctl load ~/Library/LaunchAgents/com.swiftborders.plist
+Start SwiftBorders from `~/.config/aerospace/aerospace.toml`:
+
+```toml
+after-startup-command = [
+    'exec-and-forget swiftborders active_color=0xffe1e3e4 inactive_color=0xff494d64 width=5.0'
+]
 ```
 
-With yabai or AeroSpace, instead just launch it from their config like
-JankyBorders (`swiftborders &`).
+If you already have `after-startup-command` entries, append this one to the
+array — and remove any old JankyBorders `borders` line (also make sure the old
+instance is stopped: `brew services stop borders` or `pkill -x borders`).
+Because the config file is live-reloaded, you can also leave the arguments out
+of the TOML and tune everything in `~/.config/swiftborders/swiftbordersrc`
+without restarting AeroSpace.
+
+For yabai, the equivalent line at the end of `~/.config/yabai/yabairc`:
+
+```sh
+swiftborders active_color=0xffe1e3e4 inactive_color=0xff494d64 width=5.0 &
+```
+
+## Building from source
+
+```sh
+swift build -c release    # binary at .build/release/swiftborders
+swift test
+```
+
+Note: an unsigned local build gets a new ad-hoc code signature on every
+rebuild, so macOS may ask you to re-grant the Accessibility permission after
+rebuilding. Release builds installed via Homebrew don't have this problem.
 
 ## Architecture
 
@@ -88,5 +113,3 @@ JankyBorders (`swiftborders &`).
     layer correctly in between.
   - `BorderManager` — glues tracker events to border windows, applies config
     and live reloads.
-
-Run tests with `swift test`.
