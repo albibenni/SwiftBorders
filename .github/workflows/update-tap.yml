@@ -1,5 +1,6 @@
 # Bumps the Homebrew formula in albibenni/homebrew-swiftborders whenever a
-# GitHub release is published here (or manually via workflow_dispatch).
+# version tag (v*) is pushed or a GitHub release is published here (or
+# manually via workflow_dispatch).
 #
 # Requires a repository secret TAP_GITHUB_TOKEN: a fine-grained personal
 # access token with read/write "Contents" permission on the
@@ -7,6 +8,8 @@
 name: Update Homebrew tap
 
 on:
+  push:
+    tags: ["v*"]
   release:
     types: [published]
   workflow_dispatch:
@@ -21,7 +24,13 @@ jobs:
     steps:
       - name: Determine tag
         id: tag
-        run: echo "tag=${{ github.event.inputs.tag || github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            tag="${{ github.ref_name }}"
+          else
+            tag="${{ github.event.inputs.tag || github.event.release.tag_name }}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Compute source tarball sha256
         id: sha
