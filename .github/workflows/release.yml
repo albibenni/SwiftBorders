@@ -1,0 +1,119 @@
+# Full release pipeline, fired by pushing a v* tag (or manually):
+#   build universal binary -> Developer ID sign -> notarize -> GitHub release
+#   with the zip attached -> bump the Homebrew tap formula to the new binary.
+#
+# Required repository secrets:
+#   MACOS_CERTIFICATE_P12      base64 of the "Developer ID Application" cert+key
+#                              (Keychain Access -> export .p12, then `base64 -i cert.p12`)
+#   MACOS_CERTIFICATE_PASSWORD the .p12 export password
+#   NOTARY_APPLE_ID            Apple ID email
+#   NOTARY_TEAM_ID             e.g. YVZG5QKT42
+#   NOTARY_PASSWORD            app-specific password (account.apple.com)
+#   TAP_GITHUB_TOKEN           fine-grained PAT, contents read/write on homebrew-swiftborders
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release (e.g. v0.1.2)"
+        required: true
+
+env:
+  IDENTITY: "Developer ID Application: Alberto Benatti (YVZG5QKT42)"
+  BUNDLE_ID: "it.albibenni.swiftborders"
+
+jobs:
+  release:
+    runs-on: macos-latest
+    permissions:
+      contents: write # create the GitHub release
+    steps:
+      - name: Determine tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            tag="${{ github.ref_name }}"
+          else
+            tag="${{ github.event.inputs.tag }}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - name: Import signing certificate
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 build.keychain
+          echo "$CERT_P12" | base64 --decode > cert.p12
+          security import cert.p12 -k build.keychain -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          rm cert.p12
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+
+      - name: Build, sign, and test
+        run: |
+          swift test
+          swift build -c release --arch arm64 --arch x86_64
+          mkdir -p dist
+          cp .build/apple/Products/Release/swiftborders dist/swiftborders
+          codesign --force --sign "$IDENTITY" \
+            --identifier "$BUNDLE_ID" \
+            --options runtime \
+            --timestamp \
+            dist/swiftborders
+          codesign --verify --strict --verbose=2 dist/swiftborders
+
+      - name: Notarize
+        env:
+          APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          APP_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: |
+          ZIP="dist/swiftborders-${{ steps.tag.outputs.tag }}.zip"
+          ditto -c -k dist/swiftborders "$ZIP"
+          xcrun notarytool submit "$ZIP" \
+            --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$APP_PASSWORD" \
+            --wait
+          echo "zip=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Create GitHub release with binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          gh release create "$TAG" "$zip" --generate-notes --verify-tag \
+            || gh release upload "$TAG" "$zip" --clobber
+
+      - name: Compute asset sha256
+        id: sha
+        run: echo "sha=$(shasum -a 256 "$zip" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout tap
+        uses: actions/checkout@v4
+        with:
+          repository: albibenni/homebrew-swiftborders
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: tap
+
+      - name: Update formula and push
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          URL="https://github.com/albibenni/SwiftBorders/releases/download/$TAG/swiftborders-$TAG.zip"
+          cd tap
+          sed -i '' -E "s|url \".*\"|url \"$URL\"|" Formula/swiftborders.rb
+          sed -i '' -E "s|sha256 \".*\"|sha256 \"${{ steps.sha.outputs.sha }}\"|" Formula/swiftborders.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git diff --quiet && { echo "formula already up to date"; exit 0; }
+          git commit -am "swiftborders $TAG"
+          git push
