@@ -35,6 +35,7 @@ well-known window utilities. Everything else is public API.
 
 ```sh
 brew tap albibenni/swiftborders
+brew trust albibenni/swiftborders   # third-party taps need a one-time trust
 brew install swiftborders
 ```
 
@@ -91,6 +92,15 @@ If you already have `after-startup-command` entries, append this one to the
 array. Because the config file is live-reloaded, you can also leave the
 arguments out of the TOML and tune everything in
 `~/.config/swiftborders/swiftbordersrc` without restarting AeroSpace.
+
+Two things to know:
+
+- `after-startup-command` runs when AeroSpace itself starts (login or app
+  restart) — `aerospace reload-config` does **not** re-run it. To start
+  borders right away, run the command once manually or restart AeroSpace.
+- Pick **one** launcher: if AeroSpace starts SwiftBorders, don't also enable
+  `brew services start swiftborders` (and vice versa), or you'll get two
+  instances drawing double borders at login.
 
 For yabai, the equivalent line at the end of `~/.config/yabai/yabairc`:
 
