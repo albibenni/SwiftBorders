@@ -1,5 +1,10 @@
 # SwiftBorders
 
+[![Release](https://img.shields.io/github/v/release/albibenni/SwiftBorders)](https://github.com/albibenni/SwiftBorders/releases/latest)
+[![CI](https://github.com/albibenni/SwiftBorders/actions/workflows/release.yml/badge.svg)](https://github.com/albibenni/SwiftBorders/actions/workflows/release.yml)
+[![Platform](https://img.shields.io/badge/platform-macOS%2015%2B-blue)](#install)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 Colored window borders for macOS 15+ (built and tested on macOS 26 Tahoe),
 written in Swift. SwiftBorders highlights the focused window and outlines the
 rest, and is designed around one goal: **keep working across macOS releases**.
