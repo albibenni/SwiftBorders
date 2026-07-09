@@ -40,7 +40,7 @@ well-known window utilities. Everything else is public API.
 
 ```sh
 brew tap albibenni/swiftborders
-brew trust albibenni/swiftborders   # third-party taps need a one-time trust
+brew trust --formula albibenni/swiftborders/swiftborders   # third-party taps need a one-time trust
 brew install swiftborders
 ```
 
