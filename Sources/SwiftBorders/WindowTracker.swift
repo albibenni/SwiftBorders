@@ -184,11 +184,17 @@ final class WindowTracker {
     private func remove(id: CGWindowID) {
         guard windows.removeValue(forKey: id) != nil else { return }
         pollers.removeValue(forKey: id)?.stop()
-        if focusedID == id {
+        let wasFocused = (focusedID == id)
+        if wasFocused {
             focusedID = nil
             delegate?.trackerDidChangeFocus(to: nil)
         }
         delegate?.trackerDidRemove(id: id)
+        if wasFocused {
+            DispatchQueue.main.async { [weak self] in
+                self?.updateFocus()
+            }
+        }
     }
 
     // MARK: - AX events
@@ -222,7 +228,11 @@ final class WindowTracker {
             reconcile()
 
         case kAXFocusedWindowChangedNotification:
-            updateFocus()
+            if let id = AX.windowID(of: element) {
+                updateFocus(explicitID: id)
+            } else {
+                updateFocus()
+            }
 
         default:
             break
@@ -237,9 +247,11 @@ final class WindowTracker {
         delegate?.trackerDidMove(id: id, frame: frame)
     }
 
-    private func updateFocus() {
+    private func updateFocus(explicitID: CGWindowID? = nil) {
         var newFocus: CGWindowID?
-        if let app = NSWorkspace.shared.frontmostApplication,
+        if let explicitID = explicitID, windows[explicitID] != nil {
+            newFocus = explicitID
+        } else if let app = NSWorkspace.shared.frontmostApplication,
            let appElement = appElements[app.processIdentifier],
            let focused = AX.focusedWindow(ofApp: appElement),
            let id = AX.windowID(of: focused), windows[id] != nil {
@@ -319,6 +331,8 @@ final class WindowTracker {
             refreshFrame(id: id)
         }
         delegate?.trackerDidReconcile(onScreen: onScreen)
+
+        updateFocus()
 
         reconcileTick += 1
         if reconcileTick % 3 == 0 {
