@@ -51,7 +51,7 @@ final class BorderWindow: NSPanel {
     /// and redraws the ring. Cheap enough to call on every AX move event.
     func render(targetFrame: CGRect, width: CGFloat, innerRadius: CGFloat, color: CGColor) {
         let overlay = BorderGeometry.overlayFrame(forWindowFrame: targetFrame, borderWidth: width)
-        setFrame(overlay, display: false)
+        setFrame(overlay, display: true)
 
         let ring = BorderGeometry.ring(
             overlaySize: overlay.size, borderWidth: width, innerRadius: innerRadius)

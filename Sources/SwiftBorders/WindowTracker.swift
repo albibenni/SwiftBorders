@@ -264,12 +264,47 @@ final class WindowTracker {
 
     // MARK: - Drag polling
 
-    private final class Poller {
-        var timer: Timer?
+    @MainActor
+    private final class Poller: NSObject {
+        var displayLink: CADisplayLink?
+        var fallbackTimer: Timer?
         var lastChange = Date()
+        let id: CGWindowID
+        weak var tracker: WindowTracker?
+
+        init(id: CGWindowID, tracker: WindowTracker) {
+            self.id = id
+            self.tracker = tracker
+            super.init()
+        }
+
+        func start() {
+            if let screen = NSScreen.main ?? NSScreen.screens.first {
+                let link = screen.displayLink(target: self, selector: #selector(tick))
+                link.add(to: .main, forMode: .common)
+                self.displayLink = link
+            } else {
+                let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
+                    Task { @MainActor in
+                        self?.tick()
+                    }
+                }
+                RunLoop.main.add(timer, forMode: .common)
+                self.fallbackTimer = timer
+            }
+        }
+
+        @objc private func tick() {
+            Task { @MainActor in
+                tracker?.poll(id: id)
+            }
+        }
+
         func stop() {
-            timer?.invalidate()
-            timer = nil
+            displayLink?.invalidate()
+            displayLink = nil
+            fallbackTimer?.invalidate()
+            fallbackTimer = nil
         }
     }
 
@@ -278,13 +313,9 @@ final class WindowTracker {
             existing.lastChange = Date()
             return
         }
-        let poller = Poller()
+        let poller = Poller(id: id, tracker: self)
         pollers[id] = poller
-        let timer = Timer(timeInterval: 1.0 / 90.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.poll(id: id) }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        poller.timer = timer
+        poller.start()
     }
 
     private func poll(id: CGWindowID) {
