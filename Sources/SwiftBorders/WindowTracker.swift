@@ -295,9 +295,7 @@ final class WindowTracker {
         }
 
         @objc private func tick() {
-            Task { @MainActor in
-                tracker?.poll(id: id)
-            }
+            tracker?.poll(id: id)
         }
 
         func stop() {
